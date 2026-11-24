@@ -1,0 +1,19 @@
+{
+  "categories": {
+    "Scrivania stile classico / Victorian legno": [
+      {
+        "name": "Simone Guarracino Victorian Computer 100cm",
+        "url": "https://www.simoneguarracino.it/IT/scrivania-victorian-computer-stile-inglese-scrittoio-ministeriale-cm-100-noce-ecopelle-bordeaux.html"
+      },
+      {
+        "name": "Casa Padrino Segretario Lusso Stile Antico 180cm",
+        "url": "https://www.casa-padrino.de/it/casa-padrino-luxury-antique-style-secretary-desk-solid-wood-england-vintage-empire-art-nouveau-baroque-colonial-solid-wood/a-91559"
+      },
+      {
+        "name": "Casa Padrino Scrivania Mogano Stile Inglese 140cm",
+        "url": "https://www.casa-padrino.de/it/casa-padrino-scrivania-di-lusso-in-mogano-marrone-scuro-verde-oro-140-x-70-x-a-78-cm-tavolo-da-ufficio-in-stile-inglese-mobili-da-ufficio-di-lusso/a-114273"
+      }
+    ]
+  },
+  "notes": "Aggiungi qui altri URL di prodotti simili (scrivanie classiche in legno di lusso). Il tool estrae il prezzo in automatico."
+}
