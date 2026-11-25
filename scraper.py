@@ -7,14 +7,13 @@ from bs4 import BeautifulSoup
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
+    "Accept-Language": "it-IT,it;q=0.9,pl;q=0.8,en;q=0.7",
 }
 
 
 def extract_price_from_html(html: str) -> Optional[float]:
     soup = BeautifulSoup(html, "html.parser")
 
-    # JSON-LD
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string or "{}")
@@ -30,7 +29,6 @@ def extract_price_from_html(html: str) -> Optional[float]:
         except Exception:
             continue
 
-    # Meta
     meta = soup.find("meta", {"property": "product:price:amount"}) or soup.find("meta", {"itemprop": "price"})
     if meta and meta.get("content"):
         try:
@@ -38,12 +36,11 @@ def extract_price_from_html(html: str) -> Optional[float]:
         except ValueError:
             pass
 
-    # Regex
     text = soup.get_text(" ", strip=True)
     patterns = [
-        r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*€",
-        r"€\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
-        r"(\d{1,3}(?:,\d{3})*\.\d{2})\s*€",
+        r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*[€zł]",
+        r"[€zł]\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+        r"(\d{1,3}(?:,\d{3})*\.\d{2})\s*[€zł]",
     ]
     candidates = []
     for pat in patterns:
@@ -92,23 +89,31 @@ def scrape_price(url: str, name: str = None) -> dict:
         }
 
 
-def search_marketplace(query: str, site: str = "trovaprezzi") -> list:
+def search_marketplace(query: str, site: str, lang: str = "it") -> list:
     results = []
     try:
-        if site == "trovaprezzi":
-            search_url = f"https://www.trovaprezzi.it/arredamento-ufficio/offerte/{query.replace(' ', '-')}"
+        if lang == "pl":
+            if site == "allegro":
+                search_url = f"https://allegro.pl/listing?string={requests.utils.quote(query)}"
+            else:
+                search_url = f"https://www.ceneo.pl/;szukaj-{requests.utils.quote(query)}"
         else:
-            search_url = f"https://www.idealo.it/risultati.html?q={requests.utils.quote(query)}"
+            if site == "trovaprezzi":
+                search_url = f"https://www.trovaprezzi.it/arredamento-ufficio/offerte/{query.replace(' ', '-')}"
+            else:
+                search_url = f"https://www.idealo.it/risultati.html?q={requests.utils.quote(query)}"
+
         resp = requests.get(search_url, headers=HEADERS, timeout=10)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             for a in soup.find_all("a", href=True)[:8]:
-                if "http" in a["href"] and any(x in a["href"] for x in ["product", "offerta", "item"]):
+                if "http" in a["href"] or a["href"].startswith("/"):
                     price = extract_price_from_html(str(a))
                     if price:
+                        href = a["href"] if a["href"].startswith("http") else search_url
                         results.append({
                             "name": a.get_text(strip=True)[:60] or query,
-                            "url": a["href"],
+                            "url": href,
                             "price": price,
                             "source": site.capitalize(),
                             "status": "ok",
@@ -121,17 +126,19 @@ def search_marketplace(query: str, site: str = "trovaprezzi") -> list:
     return results
 
 
-def search_google_shopping(query: str) -> list:
+def search_google_shopping(query: str, lang: str = "it") -> list:
     results = []
     try:
-        search_url = f"https://www.google.com/search?tbm=shop&q={requests.utils.quote(query)}&hl=it&gl=it"
+        hl = "pl" if lang == "pl" else "it"
+        gl = "pl" if lang == "pl" else "it"
+        search_url = f"https://www.google.com/search?tbm=shop&q={requests.utils.quote(query)}&hl={hl}&gl={gl}"
         resp = requests.get(search_url, headers=HEADERS, timeout=10)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
             for div in soup.find_all(["div", "span", "a"])[:20]:
                 text = div.get_text(" ", strip=True)
                 price = extract_price_from_html(str(div))
-                if price and any(word in text.lower() for word in ["scrivania", "desk", query.lower().split()[0] if query else ""]):
+                if price:
                     link = div.find("a") if div.name != "a" else div
                     href = link.get("href", "") if link else ""
                     if href.startswith("/url?q="):
@@ -151,10 +158,11 @@ def search_google_shopping(query: str) -> list:
     return results
 
 
-def search_amazon(query: str) -> list:
+def search_amazon(query: str, lang: str = "it") -> list:
     results = []
     try:
-        search_url = f"https://www.amazon.it/s?k={requests.utils.quote(query)}"
+        domain = "amazon.pl" if lang == "pl" else "amazon.it"
+        search_url = f"https://www.{domain}/s?k={requests.utils.quote(query)}"
         resp = requests.get(search_url, headers=HEADERS, timeout=10)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -166,7 +174,7 @@ def search_amazon(query: str) -> list:
                     price_text = price_el.get_text(strip=True)
                     price = extract_price_from_html(f"<span>{price_text}</span>")
                     if price:
-                        href = "https://www.amazon.it" + link_el["href"] if link_el and link_el.get("href") else search_url
+                        href = f"https://www.{domain}" + link_el["href"] if link_el and link_el.get("href") else search_url
                         results.append({
                             "name": title_el.get_text(strip=True)[:60],
                             "url": href,
@@ -182,21 +190,26 @@ def search_amazon(query: str) -> list:
     return results
 
 
-def analyze(product_url: str, competitor_urls: list[str], product_keywords: str = None) -> list[dict]:
+def analyze(product_url: str, competitor_urls: list[str], product_keywords: str = None, lang: str = "it") -> list[dict]:
     results = []
 
-    main = scrape_price(product_url, "Tuo prodotto")
+    main = scrape_price(product_url, "Tuo prodotto" if lang == "it" else "Twój produkt")
     results.append(main)
 
     for i, url in enumerate(competitor_urls, 1):
         if url.strip():
-            results.append(scrape_price(url.strip(), f"Concorrente {i}"))
+            label = f"Concorrente {i}" if lang == "it" else f"Konkurent {i}"
+            results.append(scrape_price(url.strip(), label))
 
-    query = product_keywords or main.get("name", "scrivania classica")
+    query = product_keywords or main.get("name", "scrivania" if lang == "it" else "biurko")
     if query:
-        results.extend(search_marketplace(query, "trovaprezzi"))
-        results.extend(search_marketplace(query, "idealo"))
-        results.extend(search_google_shopping(query))
-        results.extend(search_amazon(query))
+        if lang == "pl":
+            results.extend(search_marketplace(query, "allegro", lang))
+            results.extend(search_marketplace(query, "ceneo", lang))
+        else:
+            results.extend(search_marketplace(query, "trovaprezzi", lang))
+            results.extend(search_marketplace(query, "idealo", lang))
+        results.extend(search_google_shopping(query, lang))
+        results.extend(search_amazon(query, lang))
 
     return results
